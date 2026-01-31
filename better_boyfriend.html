@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Better Boyfriend (Reliable)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"
+        crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Apple Glass UI */
+        .ios-glass {
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border-top: 0.5px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* Camera Utils */
+        .mirrored {
+            transform: scaleX(-1);
+        }
+
+        .normal {
+            transform: scaleX(1);
+        }
+
+        /* OVERLAY STATES */
+        #targetOverlay {
+            transition: all 0.2s ease-out;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* RED (Error/Searching) */
+        .state-error {
+            stroke: #FF453A !important;
+            opacity: 0.8;
+            filter: drop-shadow(0 0 8px rgba(255, 69, 58, 0.4));
+        }
+
+        /* YELLOW (Adjusting) */
+        .state-warn {
+            stroke: #FFD60A !important;
+            opacity: 1;
+            stroke-width: 3 !important;
+            filter: drop-shadow(0 0 8px rgba(255, 214, 10, 0.4));
+        }
+
+        /* GREEN (Success) */
+        .state-success {
+            stroke: #32D74B !important;
+            stroke-width: 4 !important;
+            opacity: 1 !important;
+            filter: drop-shadow(0 0 15px rgba(50, 215, 75, 0.6));
+        }
+
+        .feedback-text {
+            transition: color 0.2s ease;
+        }
+
+        .text-red {
+            color: #FF453A;
+        }
+
+        .text-yellow {
+            color: #FFD60A;
+        }
+
+        .text-green {
+            color: #32D74B;
+        }
+
+        /* Shutter & Countdown */
+        .shutter-ring {
+            transition: transform 0.1s ease;
+        }
+
+        .shutter-active .shutter-ring {
+            transform: scale(0.9);
+        }
+
+        .shutter-inner {
+            transition: all 0.2s;
+        }
+
+        .shutter-active .shutter-inner {
+            transform: scale(0.85);
+            background-color: #e5e5e5;
+        }
+
+        .countdown-number {
+            font-size: 120px;
+            font-weight: 800;
+            color: white;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .countdown-active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .icon-active {
+            color: #FFD60A;
+            filter: drop-shadow(0 0 8px rgba(255, 214, 10, 0.5));
+        }
+
+        .icon-inactive {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        @keyframes iosFlash {
+            0% {
+                opacity: 0;
+            }
+
+            20% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0;
+            }
+        }
+
+        .trigger-flash {
+            animation: iosFlash 0.35s ease-out;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+
+<body class="h-screen w-screen relative text-white bg-black">
+
+    <video id="webcam" class="absolute inset-0 w-full h-full object-cover z-0 mirrored" autoplay playsinline
+        muted></video>
+
+    <div class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+        <div id="countdown" class="countdown-number">3</div>
+    </div>
+
+    <div class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none p-0">
+        <svg id="targetOverlay" class="w-full h-full max-w-lg transition-all duration-300 state-error"
+            viewBox="0 0 360 640">
+        </svg>
+    </div>
+
+    <div id="flash" class="absolute inset-0 bg-white opacity-0 z-50 pointer-events-none"></div>
+
+    <div class="absolute inset-0 z-30 flex flex-col justify-between pointer-events-none">
+
+        <div class="w-full pt-14 flex justify-center">
+            <div id="statusPill"
+                class="bg-black/20 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full flex items-center gap-2 transition-all">
+                <div id="statusDot" class="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></div>
+                <span id="statusText" class="text-[11px] font-medium tracking-wide text-white/90">Initializing...</span>
+            </div>
+        </div>
+
+        <div id="feedbackContainer" class="absolute top-[20%] w-full text-center px-4 transition-all duration-300">
+            <h1 id="mainFeedback" class="text-3xl font-bold drop-shadow-lg tracking-tight feedback-text text-white">
+                Searching...</h1>
+            <p id="subFeedback" class="text-sm font-medium text-white/80 mt-2 drop-shadow-md tracking-wide uppercase">
+                Point at subject</p>
+        </div>
+
+        <div
+            class="w-full ios-glass pb-12 pt-6 rounded-t-[2.5rem] pointer-events-auto shadow-[0_-10px_60px_rgba(0,0,0,0.4)]">
+
+            <div class="flex overflow-x-auto px-6 gap-3 mb-8 no-scrollbar items-center snap-x snap-mandatory">
+            </div>
+
+            <div class="flex justify-between items-center px-10">
+                <button onclick="toggleAuto()"
+                    class="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center border border-white/10 active:scale-95 transition-all">
+                    <svg id="autoIcon" class="w-5 h-5 icon-inactive transition-colors" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </button>
+
+                <button id="shutterBtn" onclick="takePhoto()"
+                    class="w-[4.5rem] h-[4.5rem] rounded-full border-[5px] border-white flex items-center justify-center shutter-ring shadow-lg">
+                    <div class="w-[3.6rem] h-[3.6rem] bg-white rounded-full shutter-inner"></div>
+                </button>
+
+                <button onclick="switchCamera()"
+                    class="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md flex items-center justify-center border border-white/10 active:scale-95 transition-all">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="captureCanvas" class="hidden"></canvas>
+
+    <script type="module">
+        import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+
+        // CONFIG
+        let currentFacingMode = 'user';
+        let poseLandmarker = undefined;
+        let isAutoCaptureOn = false;
+        let currentPose = 'headshot';
+        let perfectFrameCount = 0;
+        let isCountingDown = false;
+        let countdownTimer = null;
+        let stream = null;
+
+        // DOM
+        const video = document.getElementById("webcam");
+        const overlay = document.getElementById("targetOverlay");
+        const mainText = document.getElementById("mainFeedback");
+        const subText = document.getElementById("subFeedback");
+        const countdownEl = document.getElementById("countdown");
+        const autoIcon = document.getElementById("autoIcon");
+        const scroller = document.querySelector(".overflow-x-auto");
+
+        // Helper: Is point valid?
+        const exists = (pt) => (pt && pt.x !== undefined && pt.y !== undefined);
+
+        // --- RELIABLE POSES ONLY ---
+        const poses = {
+            'headshot': {
+                label: "Headshot",
+                svg: `
+                    <path d="M180,140 C210,140 235,170 235,210 C235,255 210,285 180,285 C150,285 125,255 125,210 C125,170 150,140 180,140 Z" stroke-dasharray="6 4" />
+                    <path d="M100,380 C130,340 230,340 260,380" stroke-dasharray="6 4" />
+                    <line x1="180" y1="120" x2="180" y2="300" stroke-width="1" opacity="0.4" stroke-dasharray="4 4" />
+                `,
+                check: (lm) => {
+                    const nose = lm[0];
+                    if (!exists(nose)) return { status: 'red', main: "No Face", sub: "Point camera at face" };
+
+                    if (nose.x < 0.35) return { status: 'yellow', main: "Pan Left", sub: "Center the subject" };
+                    if (nose.x > 0.65) return { status: 'yellow', main: "Pan Right", sub: "Center the subject" };
+                    if (nose.y < 0.15) return { status: 'yellow', main: "Tilt Up", sub: "Too much headroom" };
+                    if (nose.y > 0.7) return { status: 'yellow', main: "Tilt Down", sub: "Subject too low" };
+
+                    return { status: 'green', main: "Perfect", sub: "Hold still..." };
+                }
+            },
+            'tourist': {
+                label: "Tourist Hand",
+                svg: `
+                   <circle cx="180" cy="150" r="30" stroke-dasharray="4 4"/>
+                   <path d="M180,180 L180,400" stroke-dasharray="4 4" opacity="0.6"/>
+                   <path d="M180,240 L240,160" stroke-width="3" stroke-dasharray="6 4" />
+                `,
+                check: (lm) => {
+                    const nose = lm[0]; const rWrist = lm[16]; const lWrist = lm[15];
+                    if (!exists(nose)) return { status: 'red', main: "No Subject", sub: "Find the person" };
+
+                    const rUp = exists(rWrist) && rWrist.y < nose.y;
+                    const lUp = exists(lWrist) && lWrist.y < nose.y;
+
+                    if (!rUp && !lUp) return { status: 'yellow', main: "Raise Hand", sub: "Hand above head" };
+                    return { status: 'green', main: "Perfect", sub: "Hold that pose" };
+                }
+            },
+            'fullbody': {
+                label: "Full Body",
+                svg: `
+                    <circle cx="180" cy="80" r="20" stroke-dasharray="4 4" />
+                    <rect x="150" y="110" width="60" height="100" stroke-dasharray="4 4" opacity="0.6"/>
+                    <line x1="160" y1="220" x2="160" y2="520" stroke-dasharray="4 4" />
+                    <line x1="200" y1="220" x2="200" y2="520" stroke-dasharray="4 4" />
+                    <line x1="100" y1="520" x2="260" y2="520" stroke-width="2" />
+                `,
+                check: (lm) => {
+                    const nose = lm[0]; const lAnkle = lm[27]; const rAnkle = lm[28];
+
+                    if (!exists(nose)) return { status: 'red', main: "No Subject", sub: "Find the person" };
+
+                    // CRITICAL: If no ankles visible, you are too close.
+                    const feetVisible = exists(lAnkle) || exists(rAnkle);
+                    if (!feetVisible) return { status: 'yellow', main: "Step Back", sub: "Show full body to feet" };
+
+                    // Ensure full framing
+                    const footY = (lAnkle ? lAnkle.y : 0) || (rAnkle ? rAnkle.y : 0);
+                    if (footY < 0.7) return { status: 'yellow', main: "Tilt Down", sub: "Feet too high up" };
+                    if (nose.y > 0.3) return { status: 'yellow', main: "Tilt Up", sub: "Head too low" };
+
+                    return { status: 'green', main: "Perfect", sub: "Great full fit" };
+                }
+            },
+            'power': {
+                label: "Power Pose",
+                svg: `
+                    <circle cx="180" cy="150" r="30" stroke-dasharray="4 4"/>
+                    <line x1="180" y1="180" x2="180" y2="400" stroke-dasharray="4 4" opacity="0.6"/>
+                    <polyline points="120,280 140,240 180,180 220,240 240,280" stroke-width="2" stroke-dasharray="4 4" />
+                `,
+                check: (lm) => {
+                    const nose = lm[0]; const lWrist = lm[15]; const rWrist = lm[16];
+                    const lHip = lm[23]; const rHip = lm[24];
+
+                    if (!exists(nose) || !exists(lHip)) return { status: 'red', main: "No Subject", sub: "Show waist up" };
+
+                    // Check if wrists are near hips (roughly)
+                    // Hips are usually around y=0.5 to 0.7 depending on distance. Wrists should be close to Hips Y.
+                    const rHandOnHip = exists(rWrist) && Math.abs(rWrist.y - rHip.y) < 0.2;
+                    const lHandOnHip = exists(lWrist) && Math.abs(lWrist.y - lHip.y) < 0.2;
+
+                    if (!rHandOnHip && !lHandOnHip) return { status: 'yellow', main: "Hands on Hips", sub: "Place hands on waist" };
+
+                    return { status: 'green', main: "Perfect", sub: "Looking confident" };
+                }
+            }
+        };
+
+        // --- INIT ---
+        async function init() {
+            // Render Buttons
+            Object.keys(poses).forEach((key, index) => {
+                const btn = document.createElement("button");
+                btn.className = `pose-btn snap-center px-5 py-2.5 rounded-full text-[13px] font-medium transition-all duration-300 whitespace-nowrap border border-transparent text-white/60 hover:text-white`;
+                btn.innerText = poses[key].label;
+                btn.onclick = () => setPose(key, btn);
+                scroller.appendChild(btn);
+                if (index === 0) setPose(key, btn);
+            });
+
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`, delegate: "GPU" },
+                runningMode: "VIDEO", numPoses: 1
+            });
+
+            document.getElementById("statusText").innerText = "AI Ready";
+            document.getElementById("statusDot").classList.remove("bg-yellow-400", "animate-pulse");
+            document.getElementById("statusDot").classList.add("bg-green-500");
+
+            startCam();
+        }
+
+        async function startCam() {
+            if (stream) { stream.getTracks().forEach(t => t.stop()); }
+
+            // Mirror logic
+            if (currentFacingMode === 'user') {
+                video.classList.add('mirrored');
+                video.classList.remove('normal');
+            } else {
+                video.classList.add('normal');
+                video.classList.remove('mirrored');
+            }
+
+            const constraints = { video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } };
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", predict);
+            } catch (e) {
+                console.error("Cam Error", e);
+                if (currentFacingMode === 'environment') {
+                    currentFacingMode = 'user';
+                    startCam();
+                }
+            }
+        }
+
+        let lastTime = 0;
+        async function predict() {
+            if (poseLandmarker && video.readyState === 4) {
+                if (Date.now() - lastTime > 40) {
+                    lastTime = Date.now();
+                    const results = poseLandmarker.detectForVideo(video, performance.now());
+
+                    if (results.landmarks.length > 0) {
+                        const result = poses[currentPose].check(results.landmarks[0]);
+                        updateUI(result);
+                        handleAutoCapture(result.status === 'green');
+                    } else {
+                        updateUI({ status: 'red', main: "Searching...", sub: "Point at subject" });
+                        handleAutoCapture(false);
+                    }
+                }
+            }
+            requestAnimationFrame(predict);
+        }
+
+        function updateUI(res) {
+            mainText.innerText = res.main;
+            subText.innerText = res.sub;
+
+            // Reset Classes
+            overlay.classList.remove("state-error", "state-warn", "state-success");
+            mainText.classList.remove("text-red", "text-yellow", "text-green");
+
+            if (res.status === 'green') {
+                overlay.classList.add("state-success");
+                mainText.classList.add("text-green");
+            } else if (res.status === 'yellow') {
+                overlay.classList.add("state-warn");
+                mainText.classList.add("text-yellow");
+            } else {
+                overlay.classList.add("state-error");
+                mainText.classList.add("text-red");
+            }
+        }
+
+        function handleAutoCapture(isPerfect) {
+            if (!isAutoCaptureOn || isCountingDown) return;
+            if (isPerfect) {
+                perfectFrameCount++;
+                if (perfectFrameCount > 25) startCountdown();
+            } else {
+                perfectFrameCount = 0;
+            }
+        }
+
+        function startCountdown() {
+            isCountingDown = true;
+            let val = 3;
+            countdownEl.innerText = val;
+            countdownEl.classList.add("countdown-active");
+
+            countdownTimer = setInterval(() => {
+                val--;
+                if (val > 0) {
+                    countdownEl.innerText = val;
+                } else {
+                    clearInterval(countdownTimer);
+                    countdownEl.innerText = "";
+                    countdownEl.classList.remove("countdown-active");
+                    takePhoto();
+                    setTimeout(() => { isCountingDown = false; perfectFrameCount = 0; }, 1500);
+                }
+            }, 1000);
+        }
+
+        window.switchCamera = () => {
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            startCam();
+        }
+
+        window.toggleAuto = () => {
+            isAutoCaptureOn = !isAutoCaptureOn;
+            if (isAutoCaptureOn) {
+                autoIcon.classList.add("icon-active");
+                autoIcon.classList.remove("icon-inactive");
+            } else {
+                autoIcon.classList.remove("icon-active");
+                autoIcon.classList.add("icon-inactive");
+                clearInterval(countdownTimer);
+                isCountingDown = false;
+                countdownEl.classList.remove("countdown-active");
+            }
+        }
+
+        window.setPose = (key, btnElement) => {
+            currentPose = key;
+            overlay.innerHTML = poses[key].svg;
+            document.querySelectorAll('.pose-btn').forEach(b => {
+                b.style.backgroundColor = "transparent";
+                b.classList.remove("text-yellow-400", "font-bold");
+                b.classList.add("text-white/60");
+            });
+            if (btnElement) {
+                btnElement.style.backgroundColor = "rgba(250, 204, 21, 0.1)";
+                btnElement.classList.add("text-yellow-400", "font-bold");
+                btnElement.classList.remove("text-white/60");
+                btnElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+            }
+        }
+
+        window.takePhoto = () => {
+            const btn = document.getElementById("shutterBtn");
+            const flash = document.getElementById("flash");
+            btn.classList.add("shutter-active");
+            setTimeout(() => btn.classList.remove("shutter-active"), 150);
+            flash.classList.add("trigger-flash");
+            setTimeout(() => flash.classList.remove("trigger-flash"), 400);
+
+            const capCanvas = document.getElementById("captureCanvas");
+            capCanvas.width = video.videoWidth; capCanvas.height = video.videoHeight;
+            const capCtx = capCanvas.getContext("2d");
+            if (currentFacingMode === 'user') { capCtx.translate(capCanvas.width, 0); capCtx.scale(-1, 1); }
+            capCtx.drawImage(video, 0, 0);
+            const link = document.createElement('a');
+            link.download = `BetterBoyfriend_${Date.now()}.jpg`;
+            link.href = capCanvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
