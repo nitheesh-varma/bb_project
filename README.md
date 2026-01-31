@@ -96,6 +96,14 @@ Moving this from a Web Prototype to a fully scalable iOS/Android application inv
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
+## Authors
+
+Nitheesh
+Sushant
+Peeyush Kumar
+Alex zhang
+Anvesh
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
