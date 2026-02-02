@@ -96,10 +96,9 @@ Moving this from a Web Prototype to a fully scalable iOS/Android application inv
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
-## Authors & Presentation
+## Authors & [Presentation](https://docs.google.com/presentation/d/1M9kl-YUhqWP1FE5O1z1f68PjODM2MkTz/edit?usp=sharing&ouid=109678120354566889181&rtpof=true&sd=true)
 
 Nitheesh, Sushant, Peeyush Kumar, Alex zhang, Anvesh
-https://docs.google.com/presentation/d/1M9kl-YUhqWP1FE5O1z1f68PjODM2MkTz/edit?usp=sharing&ouid=109678120354566889181&rtpof=true&sd=true
 
 ## 📄 License
 
